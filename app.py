@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime
-import pytz
+from zoneinfo import ZoneInfo
 
 # ---------------------------------------------------------
 # 1. 頁面基本設定
@@ -14,10 +14,10 @@ st.set_page_config(
 )
 
 DB_FILE = "shadow_ai_registry.db"
-HK_TZ = pytz.timezone('Asia/Hong_Kong')
+HK_TZ = ZoneInfo('Asia/Hong_Kong')
 
 # ---------------------------------------------------------
-# 2. 資料庫初始化 (SQLite 代替 CSV 解決 Concurrency Issue)
+# 2. 資料庫初始化 (SQLite 解決 Concurrent 撞資料問題)
 # ---------------------------------------------------------
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -65,9 +65,8 @@ def update_record(record_id, status_code, risk_code, admin_name):
     conn.close()
 
 # ---------------------------------------------------------
-# 3. Enum 字典與 i18n 本地化 (解決字串 Hard-code 問題)
+# 3. Enum 字典與 i18n 本地化 (解決字串 Hard-code 導致邏輯出錯)
 # ---------------------------------------------------------
-# 底層儲存代號 (Enum)
 DATA_CLASS = ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "PII"]
 TRAINS_DATA = ["YES", "NO", "UNSURE"]
 RISK_LEVELS = ["LOW", "MEDIUM", "HIGH"]
@@ -106,7 +105,7 @@ TEXTS = {
     },
     "en": {
         "title": "🛡️ Enterprise AI Risk Registry",
-        "caption": "Auditable AI Governance tool aligned with ISO 27001 / 42001.",
+        "caption": "Auditable AI Governance tool aligned with ISO 27001 / ISO 42001.",
         "tab1": "📝 Self-Declaration",
         "tab2": "📋 Approved Allowlist",
         "tab3": "⚙️ GRC Admin Console",
@@ -141,14 +140,14 @@ lang_choice = st.sidebar.selectbox("Language", ["繁體中文", "English"])
 lang = "zh" if lang_choice == "繁體中文" else "en"
 t = TEXTS[lang]
 
-# 逆向 Mapping (Display -> Enum) for UI components
+# 反向 Mapping (Display -> Enum)
 rev_data_map = {v: k for k, v in t["data_map"].items()}
 rev_train_map = {v: k for k, v in t["train_map"].items()}
 rev_risk_map = {v: k for k, v in t["risk_map"].items()}
 rev_status_map = {v: k for k, v in t["status_map"].items()}
 
 # ---------------------------------------------------------
-# 4. 核心邏輯 (完全基於 Enum 運作)
+# 4. 核心風險引擎 (完全基於 Enum 運作)
 # ---------------------------------------------------------
 def evaluate_risk(data_code, train_code, is_customer_facing):
     if data_code in ["CONFIDENTIAL", "PII"] or train_code == "YES" or is_customer_facing:
@@ -166,7 +165,7 @@ st.caption(t["caption"])
 
 tab1, tab2, tab3 = st.tabs([t["tab1"], t["tab2"], t["tab3"]])
 
-# --- Tab 1: 員工申報表單 ---
+# --- Tab 1: 員工自助申報 ---
 with tab1:
     st.subheader(t["form_header"])
     st.info(t["form_info"])
@@ -175,7 +174,7 @@ with tab1:
         col1, col2 = st.columns(2)
         with col1:
             applicant = st.text_input(t["applicant"])
-            department = st.selectbox(t["dept"], ["HR", "Finance", "IT", "Marketing", "Legal", "Other"])
+            department = st.selectbox(t["dept"], ["HR", "Finance", "IT", "Marketing", "Legal", "Operations", "Other"])
             tool_name = st.text_input(t["tool_name"])
             vendor = st.text_input(t["vendor"])
         with col2:
@@ -211,39 +210,35 @@ with tab2:
     df = load_data()
     
     if not df.empty:
-        # 只顯示 Approved 和 Exception
         allowlist = df[df["status_code"].isin(["APPROVED", "EXCEPTION"])].copy()
         
         if not allowlist.empty:
-            # 轉換 Enum 顯示
             allowlist["Risk"] = allowlist["risk_level_code"].map(t["risk_map"])
             allowlist["Status"] = allowlist["status_code"].map(t["status_map"])
             
             st.dataframe(allowlist[["tool_name", "vendor", "use_case", "Risk", "Status", "iso_control"]], use_container_width=True, hide_index=True)
             
-            # 匯出報告功能 (Export Report)
-            csv = allowlist.to_csv(index=False).encode('utf-8-sig') # utf-8-sig 確保 Excel 中文不亂碼
+            # UTF-8-SIG 避免 Excel 開啟中文 CSV 亂碼
+            csv = allowlist.to_csv(index=False).encode('utf-8-sig')
             st.download_button(label="📥 下載白名單報告 (Export CSV)", data=csv, file_name='AI_Allowlist.csv', mime='text/csv')
         else:
             st.warning("No approved tools yet.")
 
-# --- Tab 3: 管理員後台 (Audit Log & Locked Fields) ---
+# --- Tab 3: 管理員審計與後台 ---
 with tab3:
     st.subheader(t["tab3"])
     admin_name = st.text_input("👨‍💼 操作員姓名 (Admin/Reviewer Name for Audit Log):")
     
     df = load_data()
     if not df.empty:
-        # 準備顯示用的 Dataframe
         view_df = df.copy()
         view_df["Risk Level"] = view_df["risk_level_code"].map(t["risk_map"])
         view_df["Status"] = view_df["status_code"].map(t["status_map"])
         
-        # Data Editor - 鎖定核心資料，只准改 Risk 同 Status
         edited_df = st.data_editor(
             view_df[["id", "timestamp", "tool_name", "data_class_code", "Risk Level", "Status", "last_modified_by"]],
             column_config={
-                "id": None, # 隱藏 ID
+                "id": None,
                 "timestamp": st.column_config.Column(disabled=True),
                 "tool_name": st.column_config.Column(disabled=True),
                 "data_class_code": st.column_config.Column(disabled=True),
@@ -259,7 +254,6 @@ with tab3:
             if not admin_name:
                 st.error("⚠️ 請輸入操作員姓名以建立審計軌跡 (Audit Log)！")
             else:
-                # 比對修改，更新 SQLite
                 for index, row in edited_df.iterrows():
                     orig_status = view_df.loc[index, "Status"]
                     orig_risk = view_df.loc[index, "Risk Level"]
