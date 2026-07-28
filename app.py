@@ -17,11 +17,10 @@ DB_FILE = "shadow_ai_registry.db"
 HK_TZ = ZoneInfo('Asia/Hong_Kong')
 
 # ---------------------------------------------------------
-# 2. 資料庫初始化 (啟用 WAL Mode 解決 Concurrency 併發問題)
+# 2. 資料庫初始化 (SQLite WAL Mode + Cache 優化)
 # ---------------------------------------------------------
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE, timeout=10)
-    # 啟用 WAL Mode (Write-Ahead Logging) 大幅提升多使用者同時存取的效能
     conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
@@ -52,6 +51,8 @@ def init_db():
 
 init_db()
 
+# 快取數據讀取 (TTL = 5 秒)，大幅提升多頁面互動時的響應速度
+@st.cache_data(ttl=5)
 def load_data():
     conn = get_db_connection()
     df = pd.read_sql_query("SELECT * FROM registry", conn)
@@ -59,7 +60,6 @@ def load_data():
     return df
 
 def update_records_batch(updates, admin_name):
-    """批次更新 Transaction 機制，避免多 Row 更新中途斷線導致資料不一致"""
     if not updates:
         return
     conn = get_db_connection()
@@ -78,9 +78,11 @@ def update_records_batch(updates, admin_name):
         raise e
     finally:
         conn.close()
+        st.cache_data.clear() # 更新資料後立刻清空快取
 
 # ---------------------------------------------------------
 # 3. Enum 字典與 i18n 本地化
+# ⚠️ 注意：未來的維護者請確保各語言中的 Display Value 保持唯一性，以防反向映射失效。
 # ---------------------------------------------------------
 TEXTS = {
     "zh": {
@@ -187,7 +189,7 @@ def evaluate_risk(data_code, train_code, is_customer_facing):
 st.title(t["title"])
 st.caption(t["caption"])
 
-# 📊 Executive Risk Dashboard (頂部管理層駕駛艙)
+# 📊 Executive Risk Dashboard
 df_all = load_data()
 
 if not df_all.empty:
@@ -197,14 +199,12 @@ if not df_all.empty:
     high_risk_count = len(df_all[df_all["risk_level_code"] == "HIGH"])
     high_risk_ratio = f"{(high_risk_count / total_count * 100):.1f}%" if total_count > 0 else "0%"
 
-    # KPI 關鍵指標卡片
     col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
     col_kpi1.metric(t["m_total"], total_count)
     col_kpi2.metric(t["m_pending"], pending_count, delta_color="inverse")
     col_kpi3.metric(t["m_approved"], approved_count)
     col_kpi4.metric(t["m_high_risk"], high_risk_ratio)
 
-    # 圖表：部門 vs 風險等級分布 (圖表預設收合，保持介面簡潔)
     with st.expander(t["chart_title"], expanded=False):
         df_chart = df_all.copy()
         df_chart["Risk"] = df_chart["risk_level_code"].map(t["risk_map"])
@@ -213,7 +213,6 @@ if not df_all.empty:
 
 st.divider()
 
-# 分頁結構
 tab1, tab2, tab3 = st.tabs([t["tab1"], t["tab2"], t["tab3"]])
 
 # --- Tab 1: 員工自助申報 ---
@@ -221,7 +220,7 @@ with tab1:
     st.subheader(t["form_header"])
     st.info(t["form_info"])
     
-    with st.form("declaration_form"):
+    with st.form("declaration_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             applicant = st.text_input(t["applicant"])
@@ -251,8 +250,10 @@ with tab1:
                 ''', (datetime.now(HK_TZ).strftime("%Y-%m-%d %H:%M:%S"), applicant, department, tool_name, vendor, use_case, data_code, train_code, is_cust, risk_code, iso_control, status_code, "System", ""))
                 conn.commit()
                 conn.close()
+                
+                st.cache_data.clear() # 清除快取以即時反應至 Dashboard
+                st.toast(f"✅ Submitted! Assessed Risk: {t['risk_map'][risk_code]}", icon="🎉")
                 st.success(f"✅ Submitted! Assessed Risk: {t['risk_map'][risk_code]}")
-                st.rerun()
             else:
                 st.error("Missing required fields.")
 
@@ -274,13 +275,12 @@ with tab2:
                 hide_index=True
             )
             
-            # 匯出 CSV 報告 (UTF-8-SIG 確保中文字體不會在 Excel 顯示亂碼)
             csv = allowlist.to_csv(index=False).encode('utf-8-sig')
             st.download_button(label="📥 下載白名單報告 (Export CSV)", data=csv, file_name='AI_Allowlist.csv', mime='text/csv')
         else:
             st.warning("No approved tools in the registry.")
 
-# --- Tab 3: 管理員審計與後台 ---
+# --- Tab 3: 管理員審計與後台 (含 Filter & Search 搜尋過濾) ---
 with tab3:
     st.subheader(t["tab3"])
     admin_name = st.text_input("👨‍💼 操作員姓名 (Admin/Reviewer Name for Audit Log):")
@@ -291,8 +291,21 @@ with tab3:
         view_df["Risk Level"] = view_df["risk_level_code"].map(t["risk_map"])
         view_df["Status"] = view_df["status_code"].map(t["status_map"])
         
+        # 🔍 搜尋與過濾列 (FilterBar)
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            selected_depts = st.multiselect("過濾部門 (Filter Department)", options=view_df["department"].unique())
+        with col_f2:
+            selected_statuses = st.multiselect("過濾狀態 (Filter Status)", options=list(t["status_map"].values()))
+            
+        filtered_df = view_df.copy()
+        if selected_depts:
+            filtered_df = filtered_df[filtered_df["department"].isin(selected_depts)]
+        if selected_statuses:
+            filtered_df = filtered_df[filtered_df["Status"].isin(selected_statuses)]
+
         edited_df = st.data_editor(
-            view_df[["id", "timestamp", "tool_name", "department", "Risk Level", "Status", "last_modified_by", "last_modified_at"]],
+            filtered_df[["id", "timestamp", "tool_name", "department", "Risk Level", "Status", "last_modified_by", "last_modified_at"]],
             column_config={
                 "id": None,
                 "timestamp": st.column_config.Column(disabled=True),
@@ -307,23 +320,31 @@ with tab3:
             key="admin_editor"
         )
         
-        if st.button("💾 儲存變更 (Save Changes)"):
-            if not admin_name:
-                st.error("⚠️ 請輸入操作員姓名以建立審計軌跡 (Audit Log)！")
-            else:
-                updates = []
-                for index, row in edited_df.iterrows():
-                    orig_status = view_df.loc[index, "Status"]
-                    orig_risk = view_df.loc[index, "Risk Level"]
-                    
-                    if row["Status"] != orig_status or row["Risk Level"] != orig_risk:
-                        new_status_code = rev_status_map[row["Status"]]
-                        new_risk_code = rev_risk_map[row["Risk Level"]]
-                        updates.append((row["id"], new_status_code, new_risk_code))
-                
-                if updates:
-                    update_records_batch(updates, admin_name)
-                    st.success("✅ 風險註冊表已更新，並完整記錄審計軌跡！")
-                    st.rerun()
+        col_b1, col_b2 = st.columns([1, 4])
+        with col_b1:
+            if st.button("💾 儲存變更 (Save Changes)"):
+                if not admin_name:
+                    st.error("⚠️ 請輸入操作員姓名以建立審計軌跡 (Audit Log)！")
                 else:
-                    st.info("無任何變更。")
+                    updates = []
+                    for index, row in edited_df.iterrows():
+                        orig_status = view_df.loc[view_df["id"] == row["id"], "Status"].values[0]
+                        orig_risk = view_df.loc[view_df["id"] == row["id"], "Risk Level"].values[0]
+                        
+                        if row["Status"] != orig_status or row["Risk Level"] != orig_risk:
+                            new_status_code = rev_status_map[row["Status"]]
+                            new_risk_code = rev_risk_map[row["Risk Level"]]
+                            updates.append((row["id"], new_status_code, new_risk_code))
+                    
+                    if updates:
+                        update_records_batch(updates, admin_name)
+                        st.toast("✅ 風險註冊表已更新！", icon="💾")
+                        st.success("✅ 風險註冊表已更新，並完整記錄審計軌跡！")
+                        st.rerun()
+                    else:
+                        st.info("無任何變更。")
+        
+        with col_b2:
+            # 匯出完整 Audit Log 報告
+            full_audit_csv = view_df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(label="📊 匯出完整審計軌跡 (Export Audit Log CSV)", data=full_audit_csv, file_name='Full_AI_Audit_Log.csv', mime='text/csv')
