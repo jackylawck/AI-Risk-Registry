@@ -1,162 +1,162 @@
 import streamlit as st
 import pandas as pd
-import os
+import sqlite3
 from datetime import datetime
+import pytz
 
 # ---------------------------------------------------------
 # 1. 頁面基本設定
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="AI Risk Registry | AI 工具風險註冊表",
+    page_title="AI Risk Registry | 企業級 AI 工具風險註冊表",
     page_icon="🛡️",
     layout="wide"
 )
 
-DATA_FILE = "shadow_ai_registry.csv"
+DB_FILE = "shadow_ai_registry.db"
+HK_TZ = pytz.timezone('Asia/Hong_Kong')
 
-# 初始化資料庫 (若不存在則建立 CSV)
-if not os.path.exists(DATA_FILE):
-    df_init = pd.DataFrame(columns=[
-        "Timestamp", "Applicant", "Department", "Tool_Name", "Vendor", 
-        "Use_Case", "Data_Classification", "Trains_On_Data", "Risk_Level", 
-        "ISO_Control", "Status"
-    ])
-    df_init.to_csv(DATA_FILE, index=False)
+# ---------------------------------------------------------
+# 2. 資料庫初始化 (SQLite 代替 CSV 解決 Concurrency Issue)
+# ---------------------------------------------------------
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            applicant TEXT,
+            department TEXT,
+            tool_name TEXT,
+            vendor TEXT,
+            use_case TEXT,
+            data_class_code TEXT,
+            trains_on_data_code TEXT,
+            is_customer_facing INTEGER,
+            risk_level_code TEXT,
+            iso_control TEXT,
+            status_code TEXT,
+            last_modified_by TEXT,
+            last_modified_at TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 def load_data():
-    return pd.read_csv(DATA_FILE)
+    conn = sqlite3.connect(DB_FILE)
+    df = pd.read_sql_query("SELECT * FROM registry", conn)
+    conn.close()
+    return df
 
-def save_data(df):
-    df.to_csv(DATA_FILE, index=False)
+def update_record(record_id, status_code, risk_code, admin_name):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    mod_time = datetime.now(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    c.execute('''
+        UPDATE registry 
+        SET status_code = ?, risk_level_code = ?, last_modified_by = ?, last_modified_at = ?
+        WHERE id = ?
+    ''', (status_code, risk_code, admin_name, mod_time, record_id))
+    conn.commit()
+    conn.close()
 
 # ---------------------------------------------------------
-# 2. 多語言文本字典 (i18n Localization Dictionary)
+# 3. Enum 字典與 i18n 本地化 (解決字串 Hard-code 問題)
 # ---------------------------------------------------------
+# 底層儲存代號 (Enum)
+DATA_CLASS = ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "PII"]
+TRAINS_DATA = ["YES", "NO", "UNSURE"]
+RISK_LEVELS = ["LOW", "MEDIUM", "HIGH"]
+STATUS_CODES = ["SUBMITTED", "ASSESSING", "APPROVED", "REJECTED", "EXCEPTION"]
+
 TEXTS = {
     "zh": {
-        "title": "🛡️ 影子 AI (Shadow AI) 申報與企業動態白名單",
-        "caption": "基於 ISO 27001 / ISO 42001 控制項之輕量化 AI 治理工具",
-        "tab1": "📝 員工工具申報",
+        "title": "🛡️ AI Risk Registry (影子 AI 風險註冊表)",
+        "caption": "基於 ISO 27001 / ISO 42001 控制項之企業級 AI 治理工具",
+        "tab1": "📝 員工自助申報",
         "tab2": "📋 認可工具白名單 (Allowlist)",
-        "tab3": "⚙️ 管理員風險註冊表 (Registry)",
+        "tab3": "⚙️ 審計與風險管理台",
         
-        # Tab 1
-        "form_header": "申報新 AI 工具 / 服務",
-        "form_info": "💡 依據企業資訊安全政策，使用任何未經 IT 預裝之免費或付費 AI 工具前請先完成申報。",
-        "applicant": "申報人姓名 / Email",
+        # UI Labels
+        "form_header": "申報新 AI 工具",
+        "form_info": "💡 依據企業資訊安全政策，使用任何未經審批之 AI 工具前請先完成申報。",
+        "applicant": "申報人姓名",
         "dept": "所屬部門",
-        "tool_name": "AI 工具名稱 (例: ChatGPT Free, Claude, Gamma)",
-        "vendor": "服務提供商 (例: OpenAI, Anthropic)",
-        "data_class": "預計輸入之資料等級",
-        "data_class_opts": ["公開資料 (Public)", "內部限閱 (Internal Only)", "機密資料 (Confidential)", "個人資料 (PII/GDPR)"],
-        "trains_data": "免費版條款是否會使用數據進行模型訓練？",
-        "trains_opts": ["是 (Yes)", "否 / 已設定 Opt-Out (No)", "不確定 (Unsure)"],
-        "customer_facing": "該工具輸出內容是否直接發布給外部客戶或用於自動決策？",
-        "use_case": "主要用途與情境說明",
-        "submit_btn": "提交風險評估",
-        "err_msg": "請填寫申報人與工具名稱！",
-        "success_msg": "申報完成！自動評估等級：",
-        "iso_label": "對應 ISO 管控項：",
+        "tool_name": "AI 工具名稱",
+        "vendor": "服務供應商",
+        "customer_facing": "輸出內容是否直接發布給客戶或用於自動決策？",
+        "use_case": "商業用途說明",
+        "submit_btn": "提交評估",
         
-        # Tab 2
-        "allowlist_header": "✅ 企業認可 AI 工具清單 (Allowlist)",
-        "no_approved": "目前尚無核准的 AI 工具清單。",
-        "m_approved": "已核准工具數",
-        "m_low_risk": "低風險工具",
-        "m_med_risk": "需特許/中風險工具",
-        
-        # Tab 3
-        "admin_header": "⚙️ 資安 / Governance 團隊管理後台",
-        "no_record": "尚無任何申報紀錄。",
-        "admin_help": "可直接在表格中修改審核狀態 (Status) 與風險等級 (Risk Level)：",
-        "save_btn": "儲存變更",
-        "save_success": "動態風險註冊表已成功更新！",
-        
-        # Risk & Status Mapping
-        "status_pending": "待審核 (Pending Review)",
-        "status_cond_approved": "條件式核准 (Conditionally Approved)",
-        "status_approved": "正式核准 (Approved)",
-        "status_banned": "禁止使用 (Banned)",
-        "risk_high": "高風險 (High)",
-        "risk_med": "中風險 (Medium)",
-        "risk_low": "低風險 (Low)"
+        # Mappings (Enum -> Display)
+        "data_map": {"PUBLIC": "公開資料", "INTERNAL": "內部限閱", "CONFIDENTIAL": "機密資料", "PII": "個人資料 (PII/GDPR)"},
+        "train_map": {"YES": "是", "NO": "否 / 已 Opt-Out", "UNSURE": "不確定"},
+        "risk_map": {"LOW": "低風險 (Low)", "MEDIUM": "中風險 (Medium)", "HIGH": "高風險 (High)"},
+        "status_map": {
+            "SUBMITTED": "已提交 (Submitted)", 
+            "ASSESSING": "評估中 (Under Assessment)", 
+            "APPROVED": "正式核准 (Approved)", 
+            "REJECTED": "拒絕/需整改 (Rejected/Remediation Req.)", 
+            "EXCEPTION": "特許例外 (Exception Approved)"
+        }
     },
     "en": {
-        "title": "🛡️ Enterprise AI Risk Registry & Dynamic Allowlist",
-        "caption": "A lightweight AI Governance tool aligned with ISO 27001 / ISO 42001 controls.",
-        "tab1": "📝 Self-Declaration Portal",
+        "title": "🛡️ Enterprise AI Risk Registry",
+        "caption": "Auditable AI Governance tool aligned with ISO 27001 / 42001.",
+        "tab1": "📝 Self-Declaration",
         "tab2": "📋 Approved Allowlist",
-        "tab3": "⚙️ Risk Registry Admin",
+        "tab3": "⚙️ GRC Admin Console",
         
-        # Tab 1
-        "form_header": "Register a New AI Tool / Service",
-        "form_info": "💡 Pursuant to Enterprise Information Security Policy, please register any free or paid third-party AI tools before usage.",
-        "applicant": "Applicant Name / Email",
+        # UI Labels
+        "form_header": "Register AI Tool",
+        "form_info": "💡 Please declare third-party AI tools prior to usage to ensure regulatory compliance.",
+        "applicant": "Applicant Name",
         "dept": "Department",
-        "tool_name": "AI Tool Name (e.g., ChatGPT Free, Claude, Gamma)",
-        "vendor": "Vendor / Provider (e.g., OpenAI, Anthropic)",
-        "data_class": "Target Data Classification",
-        "data_class_opts": ["Public", "Internal Only", "Confidential", "PII / Sensitive Data"],
-        "trains_data": "Does the vendor train models on your data (per Terms of Service)?",
-        "trains_opts": ["Yes", "No / Opted Out", "Unsure"],
-        "customer_facing": "Is the output customer-facing or used for automated decision-making?",
-        "use_case": "Business Use Case Description",
-        "submit_btn": "Submit for Risk Assessment",
-        "err_msg": "Please fill in both Applicant Name and Tool Name!",
-        "success_msg": "Submission complete! Assessed Risk Tier: ",
-        "iso_label": "Mapped ISO Control: ",
+        "tool_name": "Tool Name",
+        "vendor": "Vendor",
+        "customer_facing": "Is output customer-facing or used for automated decisions?",
+        "use_case": "Business Use Case",
+        "submit_btn": "Submit for Assessment",
         
-        # Tab 2
-        "allowlist_header": "✅ Enterprise Approved AI Allowlist",
-        "no_approved": "No approved AI tools currently in the registry.",
-        "m_approved": "Total Approved Tools",
-        "m_low_risk": "Low Risk Tools",
-        "m_med_risk": "Medium Risk Tools",
-        
-        # Tab 3
-        "admin_header": "⚙️ Information Security & Governance Admin",
-        "no_record": "No declaration records found.",
-        "admin_help": "Modify approval status and risk levels directly in the interactive table:",
-        "save_btn": "Save Changes",
-        "save_success": "Risk Registry updated successfully!",
-        
-        # Risk & Status Mapping
-        "status_pending": "Pending Review",
-        "status_cond_approved": "Conditionally Approved",
-        "status_approved": "Approved",
-        "status_banned": "Banned",
-        "risk_high": "High",
-        "risk_med": "Medium",
-        "risk_low": "Low"
+        # Mappings (Enum -> Display)
+        "data_map": {"PUBLIC": "Public", "INTERNAL": "Internal Only", "CONFIDENTIAL": "Confidential", "PII": "PII / Sensitive"},
+        "train_map": {"YES": "Yes", "NO": "No / Opt-Out", "UNSURE": "Unsure"},
+        "risk_map": {"LOW": "Low", "MEDIUM": "Medium", "HIGH": "High"},
+        "status_map": {
+            "SUBMITTED": "Submitted", 
+            "ASSESSING": "Under Assessment", 
+            "APPROVED": "Approved", 
+            "REJECTED": "Rejected / Remediation Req.", 
+            "EXCEPTION": "Exception Approved"
+        }
     }
 }
 
-# ---------------------------------------------------------
-# 3. 語言切換選單 (Sidebar)
-# ---------------------------------------------------------
-st.sidebar.title("🌐 Language / 語言")
-lang_choice = st.sidebar.selectbox("Select Language", ["繁體中文", "English"])
+st.sidebar.title("🌐 設定 / Settings")
+lang_choice = st.sidebar.selectbox("Language", ["繁體中文", "English"])
 lang = "zh" if lang_choice == "繁體中文" else "en"
 t = TEXTS[lang]
 
+# 逆向 Mapping (Display -> Enum) for UI components
+rev_data_map = {v: k for k, v in t["data_map"].items()}
+rev_train_map = {v: k for k, v in t["train_map"].items()}
+rev_risk_map = {v: k for k, v in t["risk_map"].items()}
+rev_status_map = {v: k for k, v in t["status_map"].items()}
+
 # ---------------------------------------------------------
-# 4. 自動風險評估引擎
+# 4. 核心邏輯 (完全基於 Enum 運作)
 # ---------------------------------------------------------
-def evaluate_risk(data_class, trains_on_data, is_customer_facing):
-    # 高風險條件
-    high_data_triggers = ["機密資料 (Confidential)", "個人資料 (PII/GDPR)", "Confidential", "PII / Sensitive Data"]
-    yes_train_triggers = ["是 (Yes)", "Yes"]
-    
-    if (data_class in high_data_triggers) or (trains_on_data in yes_train_triggers) or is_customer_facing:
-        risk = t["risk_high"]
-        iso_control = "ISO 27001 A.8.12 (Data Leakage) & ISO 42001 A.6 (AI Risk)"
-    elif data_class in ["內部限閱 (Internal Only)", "Internal Only"]:
-        risk = t["risk_med"]
-        iso_control = "ISO 27001 A.5.19 (Supplier Relationships)"
+def evaluate_risk(data_code, train_code, is_customer_facing):
+    if data_code in ["CONFIDENTIAL", "PII"] or train_code == "YES" or is_customer_facing:
+        return "HIGH", "ISO 27001 A.8.12 & ISO 42001 A.6"
+    elif data_code == "INTERNAL":
+        return "MEDIUM", "ISO 27001 A.5.19"
     else:
-        risk = t["risk_low"]
-        iso_control = "ISO 27001 A.8.9 (Configuration Management)"
-    return risk, iso_control
+        return "LOW", "ISO 27001 A.8.9"
 
 # ---------------------------------------------------------
 # 5. 主介面渲染
@@ -166,120 +166,108 @@ st.caption(t["caption"])
 
 tab1, tab2, tab3 = st.tabs([t["tab1"], t["tab2"], t["tab3"]])
 
-# ---------------- Tab 1: 員工申報表單 ----------------
+# --- Tab 1: 員工申報表單 ---
 with tab1:
     st.subheader(t["form_header"])
     st.info(t["form_info"])
     
-    with st.form("ai_declaration_form"):
+    with st.form("declaration_form"):
         col1, col2 = st.columns(2)
         with col1:
             applicant = st.text_input(t["applicant"])
-            department = st.selectbox(t["dept"], ["HR", "Finance", "Marketing", "IT", "Operations", "Legal", "Other"])
+            department = st.selectbox(t["dept"], ["HR", "Finance", "IT", "Marketing", "Legal", "Other"])
             tool_name = st.text_input(t["tool_name"])
             vendor = st.text_input(t["vendor"])
-        
         with col2:
-            data_class = st.selectbox(t["data_class"], t["data_class_opts"])
-            trains_on_data = st.radio(t["trains_data"], t["trains_opts"])
-            is_customer_facing = st.checkbox(t["customer_facing"])
+            data_disp = st.selectbox("Data Classification", list(t["data_map"].values()))
+            train_disp = st.radio("Vendor Data Training", list(t["train_map"].values()))
+            is_cust = st.checkbox(t["customer_facing"])
         
         use_case = st.text_area(t["use_case"])
-        submitted = st.form_submit_button(t["submit_btn"])
-        
-        if submitted:
-            if not applicant or not tool_name:
-                st.error(t["err_msg"])
+        if st.form_submit_button(t["submit_btn"]):
+            if applicant and tool_name:
+                data_code = rev_data_map[data_disp]
+                train_code = rev_train_map[train_disp]
+                
+                risk_code, iso_control = evaluate_risk(data_code, train_code, is_cust)
+                status_code = "ASSESSING" if risk_code == "HIGH" else "SUBMITTED"
+                
+                conn = sqlite3.connect(DB_FILE)
+                c = conn.cursor()
+                c.execute('''
+                    INSERT INTO registry 
+                    (timestamp, applicant, department, tool_name, vendor, use_case, data_class_code, trains_on_data_code, is_customer_facing, risk_level_code, iso_control, status_code, last_modified_by, last_modified_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (datetime.now(HK_TZ).strftime("%Y-%m-%d %H:%M:%S"), applicant, department, tool_name, vendor, use_case, data_code, train_code, is_cust, risk_code, iso_control, status_code, "System", ""))
+                conn.commit()
+                conn.close()
+                st.success(f"✅ Submitted! Assessed Risk: {t['risk_map'][risk_code]}")
             else:
-                risk, iso_control = evaluate_risk(data_class, trains_on_data, is_customer_facing)
-                
-                # 自動判斷初期狀態
-                initial_status = t["status_pending"] if risk == t["risk_high"] else t["status_cond_approved"]
-                
-                new_data = {
-                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "Applicant": applicant,
-                    "Department": department,
-                    "Tool_Name": tool_name,
-                    "Vendor": vendor,
-                    "Use_Case": use_case,
-                    "Data_Classification": data_class,
-                    "Trains_On_Data": trains_on_data,
-                    "Risk_Level": risk,
-                    "ISO_Control": iso_control,
-                    "Status": initial_status
-                }
-                
-                df = load_data()
-                df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-                save_data(df)
-                
-                st.success(f"{t['success_msg']} **{risk}**。{t['iso_label']}`{iso_control}`")
+                st.error("Missing required fields.")
 
-# ---------------- Tab 2: 企業白名單 ----------------
+# --- Tab 2: 企業白名單 ---
 with tab2:
-    st.subheader(t["allowlist_header"])
+    st.subheader(t["tab2"])
     df = load_data()
     
-    # 篩選已核准/條件核准的工具
-    approved_statuses = [t["status_approved"], t["status_cond_approved"], "Approved", "Conditionally Approved", "正式核准 (Approved)", "條件式核准 (Conditionally Approved)"]
-    approved_df = df[df["Status"].isin(approved_statuses)]
-    
-    if approved_df.empty:
-        st.warning(t["no_approved"])
-    else:
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric(t["m_approved"], len(approved_df))
+    if not df.empty:
+        # 只顯示 Approved 和 Exception
+        allowlist = df[df["status_code"].isin(["APPROVED", "EXCEPTION"])].copy()
         
-        low_risks = [t["risk_low"], "Low", "低風險 (Low)"]
-        med_risks = [t["risk_med"], "Medium", "中風險 (Medium)"]
-        
-        col_m2.metric(t["m_low_risk"], len(approved_df[approved_df["Risk_Level"].isin(low_risks)]))
-        col_m3.metric(t["m_med_risk"], len(approved_df[approved_df["Risk_Level"].isin(med_risks)]))
-        
-        st.divider()
-        st.dataframe(
-            approved_df[["Tool_Name", "Vendor", "Use_Case", "Risk_Level", "Status", "ISO_Control"]],
-            use_container_width=True,
-            hide_index=True
-        )
+        if not allowlist.empty:
+            # 轉換 Enum 顯示
+            allowlist["Risk"] = allowlist["risk_level_code"].map(t["risk_map"])
+            allowlist["Status"] = allowlist["status_code"].map(t["status_map"])
+            
+            st.dataframe(allowlist[["tool_name", "vendor", "use_case", "Risk", "Status", "iso_control"]], use_container_width=True, hide_index=True)
+            
+            # 匯出報告功能 (Export Report)
+            csv = allowlist.to_csv(index=False).encode('utf-8-sig') # utf-8-sig 確保 Excel 中文不亂碼
+            st.download_button(label="📥 下載白名單報告 (Export CSV)", data=csv, file_name='AI_Allowlist.csv', mime='text/csv')
+        else:
+            st.warning("No approved tools yet.")
 
-# ---------------- Tab 3: 管理員後台 ----------------
+# --- Tab 3: 管理員後台 (Audit Log & Locked Fields) ---
 with tab3:
-    st.subheader(t["admin_header"])
-    df = load_data()
+    st.subheader(t["tab3"])
+    admin_name = st.text_input("👨‍💼 操作員姓名 (Admin/Reviewer Name for Audit Log):")
     
-    if df.empty:
-        st.write(t["no_record"])
-    else:
-        st.write(t["admin_help"])
+    df = load_data()
+    if not df.empty:
+        # 準備顯示用的 Dataframe
+        view_df = df.copy()
+        view_df["Risk Level"] = view_df["risk_level_code"].map(t["risk_map"])
+        view_df["Status"] = view_df["status_code"].map(t["status_map"])
         
+        # Data Editor - 鎖定核心資料，只准改 Risk 同 Status
         edited_df = st.data_editor(
-            df,
+            view_df[["id", "timestamp", "tool_name", "data_class_code", "Risk Level", "Status", "last_modified_by"]],
             column_config={
-                "Status": st.column_config.SelectboxColumn(
-                    "Status / 審核狀態",
-                    options=[
-                        "Pending Review", "Conditionally Approved", "Approved", "Banned",
-                        "待審核 (Pending Review)", "條件式核准 (Conditionally Approved)", "正式核准 (Approved)", "禁止使用 (Banned)"
-                    ],
-                    required=True
-                ),
-                "Risk_Level": st.column_config.SelectboxColumn(
-                    "Risk Level / 風險等級",
-                    options=[
-                        "Low", "Medium", "High",
-                        "低風險 (Low)", "中風險 (Medium)", "高風險 (High)"
-                    ],
-                    required=True
-                )
+                "id": None, # 隱藏 ID
+                "timestamp": st.column_config.Column(disabled=True),
+                "tool_name": st.column_config.Column(disabled=True),
+                "data_class_code": st.column_config.Column(disabled=True),
+                "last_modified_by": st.column_config.Column(disabled=True),
+                "Status": st.column_config.SelectboxColumn(options=list(t["status_map"].values()), required=True),
+                "Risk Level": st.column_config.SelectboxColumn(options=list(t["risk_map"].values()), required=True)
             },
-            disabled=["Timestamp", "Applicant", "Tool_Name"],
             use_container_width=True,
             key="admin_editor"
         )
         
-        if st.button(t["save_btn"]):
-            save_data(edited_df)
-            st.success(t["save_success"])
-            st.rerun()
+        if st.button("💾 儲存變更 (Save Changes)"):
+            if not admin_name:
+                st.error("⚠️ 請輸入操作員姓名以建立審計軌跡 (Audit Log)！")
+            else:
+                # 比對修改，更新 SQLite
+                for index, row in edited_df.iterrows():
+                    orig_status = view_df.loc[index, "Status"]
+                    orig_risk = view_df.loc[index, "Risk Level"]
+                    
+                    if row["Status"] != orig_status or row["Risk Level"] != orig_risk:
+                        new_status_code = rev_status_map[row["Status"]]
+                        new_risk_code = rev_risk_map[row["Risk Level"]]
+                        update_record(row["id"], new_status_code, new_risk_code, admin_name)
+                
+                st.success("✅ 風險註冊表已更新，並記錄審計軌跡！")
+                st.rerun()
