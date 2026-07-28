@@ -5,13 +5,35 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 # ---------------------------------------------------------
-# 1. 頁面基本設定
+# 1. 頁面基本設定與安全認證
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="AI Risk Registry | 企業級 AI 工具風險註冊表",
     page_icon="🛡️",
     layout="wide"
 )
+
+# 💡 [進階功能] 輕量級企業通行碼保護
+# 如果你需要密碼保護，請取消下方函式的註解，並依照提示處理主程式
+def check_password():
+    """簡單的密碼保護機制 (預設密碼: admin2026)"""
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if not st.session_state["password_correct"]:
+        st.title("🔒 企業影子 AI 風險註冊表")
+        pwd = st.text_input("請輸入企業通行碼 (Access Code)", type="password")
+        if pwd == "admin2026":
+            st.session_state["password_correct"] = True
+            st.rerun()
+        elif pwd:
+            st.error("密碼錯誤，請聯絡系統管理員。")
+        return False
+    return True
+
+# ⚠️ 啟用密碼鎖定：若要啟用，請取消下方兩行的註解 (Remove the '#' below)
+# if not check_password():
+#     st.stop()
 
 DB_FILE = "shadow_ai_registry.db"
 HK_TZ = ZoneInfo('Asia/Hong_Kong')
@@ -51,7 +73,6 @@ def init_db():
 
 init_db()
 
-# 快取數據讀取 (TTL = 5 秒)，大幅提升多頁面互動時的響應速度
 @st.cache_data(ttl=5)
 def load_data():
     conn = get_db_connection()
@@ -73,16 +94,17 @@ def update_records_batch(updates, admin_name):
                 WHERE id = ?
             ''', (status_code, risk_code, admin_name, mod_time, record_id))
         conn.commit()
+        # 💡 核心修正：確保寫入 DB 成功後才清除快取
+        st.cache_data.clear() 
     except Exception as e:
         conn.rollback()
         raise e
     finally:
         conn.close()
-        st.cache_data.clear() # 更新資料後立刻清空快取
 
 # ---------------------------------------------------------
 # 3. Enum 字典與 i18n 本地化
-# ⚠️ 注意：未來的維護者請確保各語言中的 Display Value 保持唯一性，以防反向映射失效。
+# ⚠️ 注意：未來的維護者請確保各語言中的 Display Value 保持唯一性。
 # ---------------------------------------------------------
 TEXTS = {
     "zh": {
@@ -92,14 +114,12 @@ TEXTS = {
         "tab2": "📋 認可工具白名單 (Allowlist)",
         "tab3": "⚙️ GRC 風險管理與審計",
         
-        # Dashboard Metrics
         "m_total": "總申報數量",
         "m_pending": "待評估 / 審核中",
         "m_approved": "已獲核准 (含特許)",
         "m_high_risk": "高風險工具佔比",
         "chart_title": "📊 各部門 Shadow AI 採用與風險分布圖",
         
-        # Form
         "form_header": "申報新 AI 工具",
         "form_info": "💡 依據企業資訊安全政策，使用任何未經審批之 AI 工具前請先完成申報。",
         "applicant": "申報人姓名",
@@ -110,7 +130,6 @@ TEXTS = {
         "use_case": "商業用途說明",
         "submit_btn": "提交評估",
         
-        # Mappings
         "data_map": {"PUBLIC": "公開資料", "INTERNAL": "內部限閱", "CONFIDENTIAL": "機密資料", "PII": "個人資料 (PII/GDPR)"},
         "train_map": {"YES": "是", "NO": "否 / 已 Opt-Out", "UNSURE": "不確定"},
         "risk_map": {"LOW": "低風險 (Low)", "MEDIUM": "中風險 (Medium)", "HIGH": "高風險 (High)"},
@@ -129,14 +148,12 @@ TEXTS = {
         "tab2": "📋 Approved Allowlist",
         "tab3": "⚙️ GRC Admin Console",
         
-        # Dashboard Metrics
         "m_total": "Total Declarations",
         "m_pending": "Pending Assessment",
         "m_approved": "Approved Tools",
         "m_high_risk": "High Risk Ratio",
         "chart_title": "📊 Shadow AI Adoption & Risk Profile by Department",
         
-        # Form
         "form_header": "Register Third-Party AI Tool",
         "form_info": "💡 Declare unsanctioned AI tools prior to usage to ensure regulatory compliance.",
         "applicant": "Applicant Name",
@@ -147,7 +164,6 @@ TEXTS = {
         "use_case": "Business Use Case",
         "submit_btn": "Submit for Assessment",
         
-        # Mappings
         "data_map": {"PUBLIC": "Public", "INTERNAL": "Internal Only", "CONFIDENTIAL": "Confidential", "PII": "PII / Sensitive"},
         "train_map": {"YES": "Yes", "NO": "No / Opt-Out", "UNSURE": "Unsure"},
         "risk_map": {"LOW": "Low", "MEDIUM": "Medium", "HIGH": "High"},
@@ -166,7 +182,6 @@ lang_choice = st.sidebar.selectbox("Language", ["繁體中文", "English"])
 lang = "zh" if lang_choice == "繁體中文" else "en"
 t = TEXTS[lang]
 
-# 反向 Mapping
 rev_data_map = {v: k for k, v in t["data_map"].items()}
 rev_train_map = {v: k for k, v in t["train_map"].items()}
 rev_risk_map = {v: k for k, v in t["risk_map"].items()}
@@ -235,35 +250,45 @@ with tab1:
         use_case = st.text_area(t["use_case"])
         if st.form_submit_button(t["submit_btn"]):
             if applicant and tool_name:
-                data_code = rev_data_map[data_disp]
-                train_code = rev_train_map[train_disp]
+                # 💡 進階功能：工具重複檢測防呆機制
+                existing_tools = df_all["tool_name"].str.lower().tolist() if not df_all.empty else []
                 
-                risk_code, iso_control = evaluate_risk(data_code, train_code, is_cust)
-                status_code = "ASSESSING" if risk_code == "HIGH" else "SUBMITTED"
-                
-                conn = get_db_connection()
-                c = conn.cursor()
-                c.execute('''
-                    INSERT INTO registry 
-                    (timestamp, applicant, department, tool_name, vendor, use_case, data_class_code, trains_on_data_code, is_customer_facing, risk_level_code, iso_control, status_code, last_modified_by, last_modified_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (datetime.now(HK_TZ).strftime("%Y-%m-%d %H:%M:%S"), applicant, department, tool_name, vendor, use_case, data_code, train_code, is_cust, risk_code, iso_control, status_code, "System", ""))
-                conn.commit()
-                conn.close()
-                
-                st.cache_data.clear() # 清除快取以即時反應至 Dashboard
-                st.toast(f"✅ Submitted! Assessed Risk: {t['risk_map'][risk_code]}", icon="🎉")
-                st.success(f"✅ Submitted! Assessed Risk: {t['risk_map'][risk_code]}")
+                if tool_name.lower() in existing_tools:
+                    st.warning(f"⚠️ 工具 '{tool_name}' 已存在於風險註冊表中，請確認是否需要重複申報。")
+                else:
+                    data_code = rev_data_map[data_disp]
+                    train_code = rev_train_map[train_disp]
+                    
+                    risk_code, iso_control = evaluate_risk(data_code, train_code, is_cust)
+                    status_code = "ASSESSING" if risk_code == "HIGH" else "SUBMITTED"
+                    
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    try:
+                        c.execute('''
+                            INSERT INTO registry 
+                            (timestamp, applicant, department, tool_name, vendor, use_case, data_class_code, trains_on_data_code, is_customer_facing, risk_level_code, iso_control, status_code, last_modified_by, last_modified_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (datetime.now(HK_TZ).strftime("%Y-%m-%d %H:%M:%S"), applicant, department, tool_name, vendor, use_case, data_code, train_code, is_cust, risk_code, iso_control, status_code, "System", ""))
+                        conn.commit()
+                        st.cache_data.clear() # 成功後清除快取
+                        
+                        # 💡 核心修正：移除多餘 st.success，只留 Toast 確保 UI 乾淨
+                        st.toast(f"✅ Submitted! Assessed Risk: {t['risk_map'][risk_code]}", icon="🎉")
+                    except Exception as e:
+                        conn.rollback()
+                        st.error("寫入資料庫時發生錯誤。")
+                    finally:
+                        conn.close()
             else:
                 st.error("Missing required fields.")
 
 # --- Tab 2: 企業白名單 ---
 with tab2:
     st.subheader(t["tab2"])
-    df = load_data()
     
-    if not df.empty:
-        allowlist = df[df["status_code"].isin(["APPROVED", "EXCEPTION"])].copy()
+    if not df_all.empty:
+        allowlist = df_all[df_all["status_code"].isin(["APPROVED", "EXCEPTION"])].copy()
         
         if not allowlist.empty:
             allowlist["Risk"] = allowlist["risk_level_code"].map(t["risk_map"])
@@ -279,15 +304,16 @@ with tab2:
             st.download_button(label="📥 下載白名單報告 (Export CSV)", data=csv, file_name='AI_Allowlist.csv', mime='text/csv')
         else:
             st.warning("No approved tools in the registry.")
+    else:
+        st.write("尚無申報紀錄。")
 
-# --- Tab 3: 管理員審計與後台 (含 Filter & Search 搜尋過濾) ---
+# --- Tab 3: 管理員審計與後台 ---
 with tab3:
     st.subheader(t["tab3"])
     admin_name = st.text_input("👨‍💼 操作員姓名 (Admin/Reviewer Name for Audit Log):")
     
-    df = load_data()
-    if not df.empty:
-        view_df = df.copy()
+    if not df_all.empty:
+        view_df = df_all.copy()
         view_df["Risk Level"] = view_df["risk_level_code"].map(t["risk_map"])
         view_df["Status"] = view_df["status_code"].map(t["status_map"])
         
@@ -324,7 +350,7 @@ with tab3:
         with col_b1:
             if st.button("💾 儲存變更 (Save Changes)"):
                 if not admin_name:
-                    st.error("⚠️ 請輸入操作員姓名以建立審計軌跡 (Audit Log)！")
+                    st.error("⚠️ 請輸入操作員姓名以建立審計軌跡！")
                 else:
                     updates = []
                     for index, row in edited_df.iterrows():
@@ -339,12 +365,10 @@ with tab3:
                     if updates:
                         update_records_batch(updates, admin_name)
                         st.toast("✅ 風險註冊表已更新！", icon="💾")
-                        st.success("✅ 風險註冊表已更新，並完整記錄審計軌跡！")
                         st.rerun()
                     else:
                         st.info("無任何變更。")
         
         with col_b2:
-            # 匯出完整 Audit Log 報告
             full_audit_csv = view_df.to_csv(index=False).encode('utf-8-sig')
             st.download_button(label="📊 匯出完整審計軌跡 (Export Audit Log CSV)", data=full_audit_csv, file_name='Full_AI_Audit_Log.csv', mime='text/csv')
