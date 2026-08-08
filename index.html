@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Google Search Console 驗證標籤 -->
+    <meta name="google-site-verification" content="JZ5UohX-CcP_fQV0_DI9VadkKY4ZoTTkUifL88-fIcY" />
+
+    <!-- Code-Level Author & Credit Annotation for Search Engine Crawlers (SEO Rank Association) -->
+    <!-- Developer & Architect: 羅子淇 Jacky Law | Profile: https://jackylawck.github.io/jackylawck/ -->
+    <meta name="author" content="Jacky Law 羅子淇 (https://jackylawck.github.io/jackylawck/)" />
+    <link rel="author" href="https://jackylawck.github.io/jackylawck/" />
+    <link rel="me" href="https://jackylawck.github.io/jackylawck/" />
+
+    <!-- 精準 SEO 設定 (Google 搜尋結果格式優化) -->
+    <title>PCPD AI Protection Framework Evaluator | 決定性預審門神沙盒</title>
+    <meta name="description" content="香港企業級 AI 私隱管治與預審診斷工作站 — 對齊個人資料私隱專員公署 (PCPD) 2024《人工智能：個人資料保障模範框架》與 ISO 42001。具備 100% 決定性硬化防禦網閘、邊界控管與密碼學審計軌跡。Enterprise AI governance pre-audit gatekeeper.">
+    <meta name="keywords" content="PCPD 2024, 個人資料私隱專員公署, 個人資料保障模範框架, ISO 42001, AI Governance, AI管治, 決定性預審, Privacy-by-Design, Zero Data Retention, 羅子淇, Jacky Law">
+
+    <!-- Open Graph 社群與多語言標籤 -->
+    <meta property="og:title" content="PCPD AI Protection Framework Evaluator | 決定性預審門神沙盒">
+    <meta property="og:description" content="香港企業級 AI 私隱管治與預審診斷工作站 — 具備 100% 決定性防禦網閘、邊界控管與 ISO 42001 密碼學審計軌跡。Enterprise Privacy-Preserving AI Governance.">
+    <meta property="og:url" content="https://jackylawck.github.io/PCPD_ai_protection_framework/">
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="zh_HK">
+    <meta property="og:locale:alternate" content="en_US">
+    <link rel="canonical" href="https://pcpd-ai-protection-framework.streamlit.app/" />
+
+    <!-- Schema.org JSON-LD Structured Data for Googlebot (Code-Level Metadata) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "PCPD AI Protection Framework Evaluator",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "description": "Enterprise AI Governance Pre-Audit Sandbox aligned with PCPD 2024 Model Framework and ISO 42001.",
+      "url": "https://jackylawck.github.io/PCPD_ai_protection_framework/",
+      "author": {
+        "@type": "Person",
+        "name": "羅子淇 (Jacky Law)",
+        "url": "https://jackylawck.github.io/jackylawck/"
+      },
+      "creator": {
+        "@type": "Person",
+        "name": "羅子淇 (Jacky Law)",
+        "url": "https://jackylawck.github.io/jackylawck/"
+      }
+    }
+    </script>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            900: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-sky-600 selection:text-white">
+
+    <!-- 導覽列 Navigation -->
+    <nav class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="font-bold text-lg tracking-tight text-white flex items-center gap-2">
+                <span>🏛️ PCPD Framework Evaluator</span>
+                <span class="text-xs text-sky-400 font-normal border border-sky-800/60 bg-sky-950/40 px-2 py-0.5 rounded">v1.0 ISO-Ready</span>
+            </div>
+            <div class="flex items-center space-x-6 text-sm font-medium text-slate-400">
+                <a href="#features" class="hover:text-sky-400 transition-colors">Features / 核心特色</a>
+                <a href="#security" class="hover:text-sky-400 transition-colors">Governance / 資安管治</a>
+                <a href="https://github.com/jackylawck/PCPD_ai_protection_framework" target="_blank" class="hover:text-white transition-colors">GitHub Repo</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero 區域 -->
+    <header class="py-20 px-6 max-w-6xl mx-auto text-center sm:text-left">
+        <div class="max-w-3xl">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-sky-500/30 bg-sky-500/10 text-sky-400 text-xs font-semibold mb-6">
+                <span class="flex h-2 w-2 rounded-full bg-sky-400 animate-pulse"></span>
+                Enterprise AI Compliance & Governance Gatekeeper | 香港 AI 私隱治理與預審門神
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight mb-6">
+                PCPD AI Protection Framework Evaluator<br>
+                <span class="text-sky-400 text-3xl sm:text-4xl">方案 A：決定性預審門神沙盒</span>
+            </h1>
+            
+            <div class="space-y-3 text-slate-300 leading-relaxed mb-8">
+                <p class="text-base sm:text-lg">
+                    企業級香港 PCPD 2024《人工智能：個人資料保障模範框架》預審工作站 — 採用 100% 決定性規則樹 (Rule-Based Regex Tree)，徹底消除大語言模型 (LLM) 機率型幻覺，為 HR 及法務團隊提供即時風險分流與邊界控制。
+                </p>
+                <p class="text-sm sm:text-base text-slate-400 italic">
+                    Enterprise pre-audit risk classification workstation implementing PCPD 2024 AI Protection Framework and ISO 42001 standards. Features deterministic decision engines, non-privacy domain refusal, and cryptographic audit hashing.
+                </p>
+            </div>
+            
+            <!-- 行動按鈕 -->
+            <div class="flex flex-wrap gap-4 justify-center sm:justify-start">
+                <a href="https://pcpd-ai-protection-framework.streamlit.app" target="_blank" rel="noopener" class="px-8 py-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold transition-all shadow-lg shadow-sky-600/30 flex items-center gap-2">
+                    🚀 即刻體驗 Web App / Launch Sandbox
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </a>
+                <a href="https://github.com/jackylawck/PCPD_ai_protection_framework" target="_blank" rel="noopener" class="px-6 py-4 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-medium transition-all">
+                    GitHub Source Code
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- GitHub Topics 標籤牆 -->
+    <section class="py-6 border-y border-slate-900 bg-slate-900/30">
+        <div class="max-w-6xl mx-auto px-6 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+            <span class="text-xs text-slate-400 font-semibold mr-2">Topics & Compliance Frameworks:</span>
+            <span class="px-3 py-1 rounded-full text-xs font-mono bg-sky-950/60 text-sky-400 border border-sky-800/50">ai-governance</span>
+            <span class="px-3 py-1 rounded-full text-xs font-mono bg-sky-950/60 text-sky-400 border border-sky-800/50">iso-42001</span>
+            <span class="px-3 py-1 rounded-full text-xs font-mono bg-sky-950/60 text-sky-400 border border-sky-800/50">privacy-by-design</span>
+            <span class="px-3 py-1 rounded-full text-xs font-mono bg-sky-950/60 text-sky-400 border border-sky-800/50">zero-data-retention</span>
+            <span class="px-3 py-1 rounded-full text-xs font-mono bg-sky-950/60 text-sky-400 border border-sky-800/50">deterministic-ai</span>
+            <span class="px-3 py-1 rounded-full text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">pcpd-2024</span>
+            <span class="px-3 py-1 rounded-full text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">pdpo-cap486</span>
+        </div>
+    </section>
+
+    <!-- 核心特色 Section -->
+    <section id="features" class="py-16 px-6 max-w-6xl mx-auto">
+        <h2 class="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-8">Key Capabilities / 核心特色</h2>
+        <div class="grid md:grid-cols-3 gap-6">
+            <div class="p-6 rounded-2xl border border-slate-800 bg-slate-900/40 space-y-3">
+                <div class="text-3xl">🛡️</div>
+                <h3 class="text-lg font-bold text-white">100% 決定性預審硬化<br><span class="text-xs text-sky-400 font-normal">Zero LLM Hallucination</span></h3>
+                <p class="text-sm text-slate-400 leading-relaxed">
+                    採用正規表達式與布林決策樹，徹底排除 LLM 生成式的隨機性與幻覺，為 PCPD 4 大領域與 60+ 核心段落提供確定的預審判定。<br>
+                    <span class="text-xs text-slate-500 block mt-1">Eliminates probabilistic inference through rigid rule-based engines, ensuring zero hallucination for pre-audit risk classification.</span>
+                </p>
+            </div>
+            <div class="p-6 rounded-2xl border border-slate-800 bg-slate-900/40 space-y-3">
+                <div class="text-3xl">🚫</div>
+                <h3 class="text-lg font-bold text-white">管轄邊界自動硬性攔截<br><span class="text-xs text-sky-400 font-normal">Boundary Enforcement Guardrails</span></h3>
+                <p class="text-sm text-slate-400 leading-relaxed">
+                    精準偵測非私隱條例管轄範圍（如勞工法例、性別歧視、版權歸屬），自動觸發拒絕評估機制，維護管治審計的嚴謹性。<br>
+                    <span class="text-xs text-slate-500 block mt-1">Hardcoded refusal mechanisms intercept out-of-scope inquiries to maintain legal precision and risk integrity.</span>
+                </p>
+            </div>
+            <div class="p-6 rounded-2xl border border-slate-800 bg-slate-900/40 space-y-3">
+                <div class="text-3xl">🔒</div>
+                <h3 class="text-lg font-bold text-white">密碼學審計軌跡紀錄<br><span class="text-xs text-sky-400 font-normal">Cryptographic SHA-256 Audit Trail</span></h3>
+                <p class="text-sm text-slate-400 leading-relaxed">
+                    每筆預審查詢即時生成對齊 ISO 42001 之 SHA-256 哈希值與 UTC 時間戳，確保企業內部 AI 評估紀錄具備不可篡改性與可審計性。<br>
+                    <span class="text-xs text-slate-500 block mt-1">Generates unique SHA-256 audit hashes for every compliance check, supporting non-repudiation and ISO 42001 verification.</span>
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 資安與隱私合規 Section -->
+    <section id="security" class="py-16 px-6 max-w-6xl mx-auto border-t border-slate-900">
+        <div class="rounded-3xl border border-sky-900/40 bg-gradient-to-b from-sky-950/20 to-slate-900/40 p-8 sm:p-12">
+            <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                <span>🛡️</span> ISO 42001 & Privacy-by-Design 治理架構
+            </h2>
+            <div class="grid md:grid-cols-2 gap-8 text-sm text-slate-300">
+                <div class="space-y-2">
+                    <h4 class="font-semibold text-sky-400 text-base">🔒 零數據留存 (Zero Data Retention / ZDR)</h4>
+                    <p class="leading-relaxed text-slate-400">
+                        採用純 Session-Only 記憶體運算架構。用戶輸入之預審情境絕不儲存於任何硬碟或雲端資料庫，會話關閉即刻徹底銷毀。<br>
+                        <span class="text-xs text-slate-500 block mt-1">Session-only in-memory processing. User scenarios are evaluated dynamically and destroyed instantly upon session closure.</span>
+                    </p>
+                </div>
+                <div class="space-y-2">
+                    <h4 class="font-semibold text-sky-400 text-base">🔒 數據最小化與 PII 隔離 (Data Minimization)</h4>
+                    <p class="leading-relaxed text-slate-400">
+                        系統僅接收管理情境描述，設計上徹底隔離個人識別資訊 (PII)。後台日誌僅儲存不可逆之 SHA-256 哈希值，完全對齊私隱條例。<br>
+                        <span class="text-xs text-slate-500 block mt-1">Ingests scenario descriptions only, strictly isolating PII. Audit logs preserve privacy by storing cryptographic hashes only.</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Code-level credit for SEO crawlers: Developed by Jacky Law 羅子淇 (https://jackylawck.github.io/jackylawck/) -->
+    <footer class="border-t border-slate-900 py-8 px-6 text-center text-xs text-slate-600">
+        <p>© 2026 PCPD AI Protection Framework Evaluator. Released under Creative Commons CC BY 4.0 / Open Source Governance Protocol.</p>
+    </footer>
+
+</body>
+</html>
